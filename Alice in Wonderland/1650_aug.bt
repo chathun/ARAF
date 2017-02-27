@@ -1,0 +1,252 @@
+# ### SECTION 1 -  FILE HEADER ### #
+InitialObjectDescriptor {
+ objectDescriptorID 1
+ audioProfileLevelIndication 255
+ visualProfileLevelIndication 254
+ sceneProfileLevelIndication 1
+ graphicsProfileLevelIndication 1
+ ODProfileLevelIndication 1
+ esDescr [
+  ES_Descriptor {
+   ES_ID 1
+   decConfigDescr DecoderConfigDescriptor {
+    streamType 3
+    decSpecificInfo BIFSConfig {
+     useNames true
+     isCommandStream true
+     pixelMetric true
+     pixelWidth 1280
+     pixelHeight 720
+    }
+   }
+  }
+  ES_Descriptor {
+   ES_ID 2
+   decConfigDescr DecoderConfigDescriptor {
+    streamType 1
+   }
+  }
+ ]
+}
+# ### SECTION 2 - EXTERNPROTO / PROTO definitions ### #
+EXTERNPROTO LocImg [
+    exposedField      SFString     videoSource                ""
+    exposedField      MFString     targetResources         []
+    exposedField      MFString     targetResourcesTypes     []
+    exposedField      SFInt32      enabled                 0
+    exposedField      SFInt32        maximumDelay            200
+    exposedField      SFInt32        optimalDelay            50
+    exposedField      MFVec2f        recognitionRegion        []
+    eventOut          MFInt32      onRecognition
+    eventOut          MFVec3f      onTranslation
+    eventOut          MFRotation   onRotation
+    eventOut          SFInt32      onError
+    eventOut          SFBool        onTargetResourcesLoaded
+] "urn:inet:gpac:builtin:LocImg"
+PROTO CAMERA [
+    eventIn SFBool openCamera
+]
+{
+    Transform2D {
+        children [
+            Shape {
+                appearance Appearance { texture DEF MT MovieTexture { url [] } }
+                geometry Rectangle { size 1280 720 }
+            }
+        ]
+    }
+    DEF SCRIPT Script {
+        eventIn    SFBool openCamera IS openCamera
+        field     SFNode mt USE MT
+        url ["javascript: function openCamera(val) { if (val) { mt.url = new MFString ('hw://camera'); } } "]
+    }
+}
+# ### SECTION 3 - ARAF SCENE ### #
+OrderedGroup {
+    children [
+        # ### SECTION - VISUAL ELEMENTS ### #
+        DEF MAIN_SW Switch {
+            whichChoice 0
+            choice [
+            # ### Screen 1: Message informing the user what's going on.. ### #
+                Shape {
+                    appearance Appearance {
+                        material Material2D {
+                            emissiveColor 1 0 0
+                            filled TRUE
+                        }
+                    }
+                    # Message displayed to the user
+                    # right after the application is started
+                    geometry Text {
+                        string ["Welcome to Augmented Book!" "..." 
+                                "Please be patient." "..." 
+                                "The images are being processed..."]
+                        fontStyle FontStyle {
+                            justify ["MIDDLE" "MIDDLE"]
+                            size 42
+                        }
+                    }
+                }
+            # ### Screen 2: Camera & Detection status ### #
+                Transform2D {
+                    translation 0 0
+                    children [
+                        DEF CAMERA_INSTANCE CAMERA {}
+                        Transform2D {
+                            translation -550 240
+                            children [
+                                Shape {
+                                    appearance Appearance {
+                                        material Material2D {
+                                            emissiveColor 0.05 0 0.1
+                                            filled FALSE
+                                            lineProps LineProperties { width 0 }
+                                        }
+                                        texture DEF DETECTED_IMGTEX ImageTexture {}
+                                    }
+                                    geometry Rectangle { size 150 150 }
+                                }
+                            ]
+                        }
+                        DEF INFO_TEXT_TRANSFORM Transform2D {
+                            translation 0 0
+                            children [
+                                Shape {
+                                    appearance Appearance {
+                                        material Material2D {
+                                            emissiveColor 1 0 0
+                                            filled TRUE
+                                        }
+                                    }
+                                    geometry DEF INFO_TEXT Text {
+                                        string ["Nothing detected"]
+                                        fontStyle DEF INFO_TEXT_FT FontStyle {
+                                            justify ["MIDDLE" "MIDDLE"]
+                                            size 42
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                         # ############# VIDEO Enrichment ############# #
+                        DEF VIDEO_SWITCH Switch {
+                            whichChoice -1
+                            choice [
+		                              Shape {
+		                              appearance Appearance {
+		                                    texture DEF MOVIE_TEXTURE MovieTexture { url ["201"] }
+		                               }
+		                              geometry Rectangle { size 800 480 }
+		                              }
+                                     ]
+                        }
+            ]
+        }
+		# ### SECTION - Non-visual elements ### #
+        DEF LOCAL_IMAGE_RECOGNITION LocImg {
+            enabled 0
+            videoSource "hw://camera"
+			targetResources ["102" "104" "106" "108" ]
+		}
+		DEF MEDIA_CONTROL MediaControl { url ["201"] }
+		DEF SD Sound2D { source DEF AUDIO AudioSource {} }
+        DEF GLOBAL_TS TimeSensor { loop TRUE }
+        # ### SECTION - BEHAVIOUR ### #
+        DEF SCRIPT Script {
+            eventIn MFInt32    onRecognitionResult
+            eventIn SFBool     onResourcesLoaded
+            eventIn SFTime     loading
+            field SFNode  js_videoSwitch 	USE VIDEO_SWITCH
+            field SFNode  js_movieTexture 	USE MOVIE_TEXTURE
+            field SFNode  js_mc		USE MEDIA_CONTROL
+			field SFInt32    JS_IMG_LOAD         5
+            field SFNode     js_detImgTex        USE DETECTED_IMGTEX
+            field SFNode     js_locImgInstance   USE LOCAL_IMAGE_RECOGNITION
+            field SFNode     js_audioNode        USE AUDIO
+            field SFNode     js_mainSW           USE MAIN_SW
+            field SFNode     js_globalTS         USE GLOBAL_TS
+            field SFNode     js_cameraInstance   USE CAMERA_INSTANCE
+            field SFNode     js_imgTitleText     USE INFO_TEXT
+            field SFNode     js_imgTitleTextFt   USE INFO_TEXT_FT
+            field SFNode     js_infoTextTransform    USE INFO_TEXT_TRANSFORM
+			field MFString   js_audioDescriptorIDs 	["" "105" "107" "109" ]
+			field MFString   js_imgDescriptorIDs 	["102","104","106","108"]
+			field MFString   js_imgTitles 			["image1_1.png" "image2_8.jpg" "image3_1.png" "image4_4.jpg" ]
+			url ["javascript:
+                function initialize() {
+                    js_cameraOpened = false;
+                    js_setupComplete = false;
+                    js_secondScreen = false;
+                }
+                function onRecognitionResult(recongnitionArray, now) {
+                    js_detectedImgIdx = -1;
+                    for ( i = 0; i < recongnitionArray.length; ++i ) {
+                        if ( recongnitionArray[i] != 0 ) {
+                            js_detectedImgIdx = i;
+                            js_imgTitleText.string[0] = js_imgTitles[i];
+                        }
+                    }
+                    if ( -1 == js_detectedImgIdx ) { return; }
+                    js_detImgTex.url[0] = js_imgDescriptorIDs[js_detectedImgIdx];
+                    js_audioNode.url[0] = js_audioDescriptorIDs[js_detectedImgIdx];
+                
+                    # ### video enrichment case ### #
+                    if (js_detectedImgIdx == 0) {
+		              js_videoSwitch.whichChoice = 0;
+		              js_movieTexture.startTime = now;
+                      js_mc.mediaStartTime = 0; 
+                    }
+                   else {
+                       js_videoSwitch.whichChoice = -1;
+                       js_movieTexture.stopTime = now;
+                     }
+                }
+                function onResourcesLoaded (val) {
+                    if (!js_cameraOpened) {
+                        js_cameraOpened = true;
+                        js_imgTitleText.string = new MFString ('Initializing camera');
+                        js_cameraInstance.openCamera = true;
+                    }
+                }
+                function loading(val) {
+                    if (js_setupComplete) { return; }
+                    if (val > JS_IMG_LOAD && !js_secondScreen) {
+                        js_secondScreen = true;
+                        js_mainSW.whichChoice = 1;
+                        js_imgTitleText.string = new MFString ('The target images are being processed.', 'Please wait...');
+                        js_locImgInstance.enabled = 1;
+                        gpac.set_orientation_landscape();
+                    }
+                    else if (js_cameraOpened) {
+                        js_globalTS.enabled = false;
+                        js_infoTextTransform.translation = new SFVec2f (-625, 340);
+                        js_imgTitleTextFt.size = 26;
+                        js_imgTitleTextFt.justify = new MFString ('BEGIN', 'MIDDLE');
+                        js_imgTitleText.string = new MFString ('Nothing detected');
+                        js_setupComplete = true;
+                    }
+                }
+            "]
+		}
+	]
+}
+# ### SECTION - ROUTES ### #
+ROUTE LOCAL_IMAGE_RECOGNITION.onRecognition TO SCRIPT.onRecognitionResult
+ROUTE LOCAL_IMAGE_RECOGNITION.onTargetResourcesLoaded TO SCRIPT.onResourcesLoaded
+ROUTE GLOBAL_TS.cycleTime TO SCRIPT.loading
+# ### SECTION - MEDIA FILES IMPORT ### #
+AT 0 {
+    UPDATE OD [
+ObjectDescriptor    {    objectDescriptorID    103    esDescr    [    ES_Descriptor    {    ES_ID    503    muxInfo    MuxInfo    {    fileName    "audios/dontgo.mp3"    }}]}
+ObjectDescriptor    {    objectDescriptorID    102    esDescr    [    ES_Descriptor    {    ES_ID    502    muxInfo    MuxInfo    {    fileName    "images/image1_1.png"    }}]}
+ObjectDescriptor    {    objectDescriptorID    105    esDescr    [    ES_Descriptor    {    ES_ID    505    muxInfo    MuxInfo    {    fileName    "audios/mad.mp3"    }}]}
+ObjectDescriptor    {    objectDescriptorID    104    esDescr    [    ES_Descriptor    {    ES_ID    504    muxInfo    MuxInfo    {    fileName    "images/image2_8.jpg"    }}]}
+ObjectDescriptor    {    objectDescriptorID    107    esDescr    [    ES_Descriptor    {    ES_ID    507    muxInfo    MuxInfo    {    fileName    "audios/curiouser.mp3"    }}]}
+ObjectDescriptor    {    objectDescriptorID    106    esDescr    [    ES_Descriptor    {    ES_ID    506    muxInfo    MuxInfo    {    fileName    "images/image3_1.png"    }}]}
+ObjectDescriptor    {    objectDescriptorID    109    esDescr    [    ES_Descriptor    {    ES_ID    509    muxInfo    MuxInfo    {    fileName    "audios/trouble.mp3"    }}]}
+ObjectDescriptor    {    objectDescriptorID    108    esDescr    [    ES_Descriptor    {    ES_ID    508    muxInfo    MuxInfo    {    fileName    "images/image4_4.jpg"    }}]}
+ObjectDescriptor    {    objectDescriptorID    201    esDescr    [    ES_Descriptor    {    ES_ID    2001   muxInfo    MuxInfo    {    fileName    "videos/video2.mp4#1" }}]}
+#TBRupdateOD
+    ]
+}
